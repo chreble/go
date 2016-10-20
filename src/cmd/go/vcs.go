@@ -37,6 +37,8 @@ type vcsCmd struct {
 	scheme  []string
 	pingCmd string
 
+	preCreateHook func(v *vcsCmd, vars map[string]interface{}) error
+
 	remoteRepo  func(v *vcsCmd, rootDir string) (remoteRepo string, err error)
 	resolveRepo func(v *vcsCmd, rootDir, remoteRepo string) (realRepo string, err error)
 }
@@ -117,6 +119,9 @@ func hgRemoteRepo(vcsHg *vcsCmd, rootDir string) (remoteRepo string, err error) 
 	return strings.TrimSpace(string(out)), nil
 }
 
+// gitRefSyntaxRe matches a Git SHA1 reference
+var gitSHA1Re = regexp.MustCompile(`(?i)^[[:lower:][:digit:]]{40}$`)
+
 // vcsGit describes how to use Git.
 var vcsGit = &vcsCmd{
 	name: "Git",
@@ -144,6 +149,47 @@ var vcsGit = &vcsCmd{
 	scheme:     []string{"git", "https", "http", "git+ssh", "ssh"},
 	pingCmd:    "ls-remote {scheme}://{repo}",
 	remoteRepo: gitRemoteRepo,
+
+	preCreateHook: func(v *vcsCmd, vars map[string]interface{}) error {
+		if vars["shallow"].(bool) {
+			v.createCmd[0] = "clone --depth=1 {repo} {dir}"
+		}
+		if vars["ref"].(string) != "" {
+			switch true {
+			// If we detect a SHA1 as a reference
+			// Append `git reset --hard {ref}` to the create commands
+			// So we switch to the good ref after cloning.
+			case gitSHA1Re.MatchString(vars["ref"].(string)):
+				if vars["shallow"].(bool) {
+					// No shallow cloning is possible if we target a specific SHA1
+					v.createCmd[0] = "clone {repo} {dir}"
+				}
+				v.createCmd = append(v.createCmd, "-go-internal-cd {dir} reset --hard "+vars["ref"].(string))
+			// If not a SHA1, we assume it is a branch, make sure it's the case
+			// by using `git check-ref-format {ref}` command.
+			// todo: tag support
+			default:
+				errCheckRef := errors.New("ref/branch name invalid format")
+				out, err := v.run1(
+					".",
+					"check-ref-format --branch {ref}",
+					[]string{"ref", vars["ref"].(string)},
+					true,
+				)
+				if err != nil {
+					return errCheckRef
+				}
+				branch := strings.TrimSpace(string(out))
+				if vars["shallow"].(bool) {
+					v.createCmd[0] = fmt.Sprintf("clone --depth=1 {repo} -b %s {dir}", branch)
+				} else {
+					v.createCmd[0] = fmt.Sprintf("clone {repo} -b %s {dir}", branch)
+				}
+			}
+		}
+
+		return nil
+	},
 }
 
 // scpSyntaxRe matches the SCP-like addresses used by Git to access
@@ -154,6 +200,7 @@ func gitRemoteRepo(vcsGit *vcsCmd, rootDir string) (remoteRepo string, err error
 	cmd := "config remote.origin.url"
 	errParse := errors.New("unable to parse output of git " + cmd)
 	errRemoteOriginNotFound := errors.New("remote origin not found")
+
 	outb, err := vcsGit.run1(rootDir, cmd, nil, false)
 	if err != nil {
 		// if it doesn't output any message, it means the config argument is correct,
