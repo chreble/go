@@ -45,6 +45,7 @@ type Package struct {
 	Root          string `json:",omitempty"` // Go root or Go path dir containing this package
 	ConflictDir   string `json:",omitempty"` // Dir is hidden by this other directory
 	BinaryOnly    bool   `json:",omitempty"` // package cannot be recompiled
+	Ref           string `json:",omitempty"` // package reference (git commit SHA1, branch name etc..)
 
 	// Source files
 	GoFiles        []string `json:",omitempty"` // .go source files (excluding CgoFiles, TestGoFiles, XTestGoFiles)
@@ -319,6 +320,9 @@ const (
 // with ./ or ../).  A local relative path is interpreted relative to srcDir.
 // It returns a *Package describing the package found in that directory.
 func loadImport(path, srcDir string, parent *Package, stk *importStack, importPos []token.Position, mode int) *Package {
+	var ref string
+	ref, path = refFromPackage(path)
+
 	stk.push(path)
 	defer stk.pop()
 
@@ -346,6 +350,9 @@ func loadImport(path, srcDir string, parent *Package, stk *importStack, importPo
 		p = reusePackage(p, stk)
 	} else {
 		p = new(Package)
+		if ref != "" {
+			p.Ref = ref
+		}
 		p.local = isLocal
 		p.ImportPath = importPath
 		packageCache[importPath] = p

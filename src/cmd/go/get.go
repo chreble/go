@@ -16,7 +16,7 @@ import (
 )
 
 var cmdGet = &Command{
-	UsageLine: "get [-d] [-s] [-ref] [-f] [-fix] [-insecure] [-t] [-u] [build flags] [packages]",
+	UsageLine: "get [-d] [-s] [-f] [-fix] [-insecure] [-t] [-u] [build flags] [packages]",
 	Short:     "download and install packages and dependencies",
 	Long: `
 Get downloads the packages named by the import paths, along with their
@@ -28,8 +28,6 @@ it instructs get not to install the packages.
 The -s flag instructs get to shallow clone the repository when possible
 (only github is implemented for now), when applied, history gets truncated
 to the latest commit.
-
-The -ref flag blabla..
 
 The -f flag, valid only when -u is set, forces get -u not to verify that
 each package has been checked out from the source control repository
@@ -84,7 +82,6 @@ var getU = cmdGet.Flag.Bool("u", false, "")
 var getFix = cmdGet.Flag.Bool("fix", false, "")
 var getInsecure = cmdGet.Flag.Bool("insecure", false, "")
 var getShal = cmdGet.Flag.Bool("s", false, "")
-var getRef = cmdGet.Flag.String("ref", "", "")
 
 func init() {
 	addBuildFlags(cmdGet)
@@ -471,9 +468,8 @@ func downloadPackage(p *Package) error {
 		}
 
 		vars := map[string]interface{}{
-			"ref":     *getRef,
 			"shallow": *getShal,
-			"root":    root,
+			"package": p,
 		}
 		if vcs.preCreateHook != nil {
 			if err = vcs.preCreateHook(vcs, vars); err != nil {
