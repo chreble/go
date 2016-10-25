@@ -359,6 +359,19 @@ func help(args []string) {
 	os.Exit(2) // failed at 'go help cmd'
 }
 
+// refFromPackage checks if the import path contains a specific reference
+// and returns it alongside with the package name
+func refFromPackage(name string) (ref string, path string) {
+	r := regexp.MustCompile(`(\:(.+?))(?:\/...)?$`)
+	res := r.FindStringSubmatch(name)
+
+	if len(res) > 0 {
+		return res[2], strings.Replace(name, res[1], "", 1)
+	}
+
+	return "", name
+}
+
 // importPathsNoDotExpansion returns the import paths to use for the given
 // command line, but it does no ... expansion.
 func importPathsNoDotExpansion(args []string) []string {
@@ -397,6 +410,7 @@ func importPaths(args []string) []string {
 	args = importPathsNoDotExpansion(args)
 	var out []string
 	for _, a := range args {
+		_, a = refFromPackage(a)
 		if strings.Contains(a, "...") {
 			if build.IsLocalImport(a) {
 				out = append(out, allPackagesInFS(a)...)

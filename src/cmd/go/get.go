@@ -29,8 +29,6 @@ The -s flag instructs get to shallow clone the repository when possible
 (only github is implemented for now), when applied, history gets truncated
 to the latest commit.
 
-The -ref flag blabla..
-
 The -f flag, valid only when -u is set, forces get -u not to verify that
 each package has been checked out from the source control repository
 implied by its import path. This can be useful if the source is a local fork
@@ -82,7 +80,6 @@ var getU = cmdGet.Flag.Bool("u", false, "")
 var getFix = cmdGet.Flag.Bool("fix", false, "")
 var getInsecure = cmdGet.Flag.Bool("insecure", false, "")
 var getShal = cmdGet.Flag.Bool("s", false, "")
-var getRef = cmdGet.Flag.String("ref", "", "")
 
 func init() {
 	addBuildFlags(cmdGet)
@@ -438,10 +435,10 @@ func downloadPackage(p *Package) error {
 		if err = os.MkdirAll(parent, 0777); err != nil {
 			return err
 		}
+
 		vars := map[string]interface{}{
-			"ref":     *getRef,
 			"shallow": *getShal,
-			"root":    root,
+			"package": p,
 		}
 		if vcs.preCreateHook != nil {
 			if err = vcs.preCreateHook(vcs, vars); err != nil {
