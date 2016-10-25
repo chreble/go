@@ -151,40 +151,53 @@ var vcsGit = &vcsCmd{
 	remoteRepo: gitRemoteRepo,
 
 	preCreateHook: func(v *vcsCmd, vars map[string]interface{}) error {
+		pkg := vars["package"].(*Package)
 		if vars["shallow"].(bool) {
 			v.createCmd[0] = "clone --depth=1 {repo} {dir}"
+		} else {
+			v.createCmd[0] = "clone {repo} {dir}"
 		}
-		if vars["ref"].(string) != "" {
-			switch true {
-			// If we detect a SHA1 as a reference
-			// Append `git reset --hard {ref}` to the create commands
-			// So we switch to the good ref after cloning.
-			case gitSHA1Re.MatchString(vars["ref"].(string)):
-				if vars["shallow"].(bool) {
-					// No shallow cloning is possible if we target a specific SHA1
-					v.createCmd[0] = "clone {repo} {dir}"
-				}
-				v.createCmd = append(v.createCmd, "-go-internal-cd {dir} reset --hard "+vars["ref"].(string))
-			// If not a SHA1, we assume it is a branch, make sure it's the case
-			// by using `git check-ref-format {ref}` command.
-			// todo: tag support
-			default:
-				errCheckRef := errors.New("ref/branch name invalid format")
-				out, err := v.run1(
-					".",
-					"check-ref-format --branch {ref}",
-					[]string{"ref", vars["ref"].(string)},
-					true,
-				)
-				if err != nil {
-					return errCheckRef
-				}
-				branch := strings.TrimSpace(string(out))
-				if vars["shallow"].(bool) {
-					v.createCmd[0] = fmt.Sprintf("clone --depth=1 {repo} -b %s {dir}", branch)
-				} else {
-					v.createCmd[0] = fmt.Sprintf("clone {repo} -b %s {dir}", branch)
-				}
+		// If we process any other package than the root package
+		// clean up stuff and exit as early as possible
+		// we don't want branches and refs to be applied recursively!
+		if pkg.Ref == "" {
+			// First check that reset command has not been appended before
+			// and delete it, if needed
+			if len(v.createCmd) == 3 {
+				v.createCmd = v.createCmd[:len(v.createCmd)-1]
+			}
+			return nil
+		}
+
+		switch true {
+		// If we detect a SHA1 as a reference
+		// Append `git reset --hard {ref}` to the create commands
+		// So we switch to the good ref after cloning.
+		case gitSHA1Re.MatchString(pkg.Ref):
+			if vars["shallow"].(bool) {
+				// No shallow cloning is possible if we target a specific SHA1
+				v.createCmd[0] = "clone {repo} {dir}"
+			}
+			v.createCmd = append(v.createCmd, "-go-internal-cd {dir} reset --hard "+pkg.Ref)
+		// If not a SHA1, we assume it is a branch, make sure it's the case
+		// by using `git check-ref-format {ref}` command.
+		// todo: tag support
+		default:
+			errCheckRef := errors.New("ref/branch name invalid format")
+			out, err := v.run1(
+				".",
+				"check-ref-format --branch {ref}",
+				[]string{"ref", pkg.Ref},
+				true,
+			)
+			if err != nil {
+				return errCheckRef
+			}
+			branch := strings.TrimSpace(string(out))
+			if vars["shallow"].(bool) {
+				v.createCmd[0] = fmt.Sprintf("clone --depth=1 {repo} -b %s {dir}", branch)
+			} else {
+				v.createCmd[0] = fmt.Sprintf("clone {repo} -b %s {dir}", branch)
 			}
 		}
 
